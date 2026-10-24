@@ -271,3 +271,5 @@ td:first-child { white-space: nowrap; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .phone { border-color: #3a3a37; } }
 :root[data-theme="dark"] .phone { border-color: #3a3a37; }
 .result.worse { background: var(--bad-soft); }
+.shift-row select, .prio select { max-width: 100%; min-width: 0; }
+.shift-row { min-width: 0; }
