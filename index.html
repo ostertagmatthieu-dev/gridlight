@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GridLight · a traffic light for your electricity</title>
+<meta name="description" content="GridLight tells Silicon Valley Clean Energy customers when power is cheap and clean, what each appliance run will cost in dollars and CO₂, and how to shift their own usage, from data they already have.">
+<meta property="og:title" content="GridLight · a traffic light for your electricity">
+<meta property="og:description" content="Time-of-use rates that finally make sense: cost and carbon, hour by hour, for your plan and your appliances.">
+<meta property="og:image" content="og.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='8' y='1' width='16' height='30' rx='6' fill='%231b1b1a'/%3E%3Ccircle cx='16' cy='8' r='4' fill='%23d03b3b' opacity='.35'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23fab219' opacity='.35'/%3E%3Ccircle cx='16' cy='24' r='4' fill='%230ca30c'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="20" height="34" viewBox="0 0 20 34" aria-hidden="true"><rect x="0" y="0" width="20" height="34" rx="7" fill="#1b1b1a"/><circle cx="10" cy="8" r="4.2" fill="#d03b3b"/><circle cx="10" cy="17" r="4.2" fill="#fab219"/><circle cx="10" cy="26" r="4.2" fill="#0ca30c"/></svg>
+      <div>GridLight<small>A traffic light for your electricity</small></div>
+    </div>
+    <div class="controls">
+      <div class="ctl"><label for="plan">Plan</label><select id="plan"></select></div>
+      <div class="ctl"><label for="season">Season</label><select id="season"><option value="winter">Winter</option><option value="summer">Summer</option></select></div>
+      <div class="ctl" id="baseline-ctl"><input type="checkbox" id="above"><label for="above">Above baseline</label></div>
+      <div class="ctl"><label for="time">Time</label><input type="time" id="time" step="900"></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card" aria-live="polite">
+    <div class="hero">
+      <div class="light" aria-hidden="true"><span class="r" data-st="r"></span><span class="a" data-st="a"></span><span class="g" data-st="g"></span></div>
+      <div>
+        <span id="hero-pill" class="status-pill">…</span>
+        <h1 id="hero-h1">Loading…</h1>
+        <div class="kpis">
+          <div class="kpi"><b id="k-price">–</b><span>your price now</span></div>
+          <div class="kpi"><b id="k-carbon">–</b><span id="k-carbon-l">grid CO₂</span></div>
+          <div class="kpi"><b id="k-next">–</b><span id="k-next-l">until next change</span></div>
+          <div class="kpi"><b id="k-best">–</b><span id="k-best-l">green window</span></div>
+        </div>
+        <div class="live-badge" id="live">Checking the CAISO live feed…</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Your day at a glance</h2>
+    <p class="sub" id="plan-note"></p>
+    <div id="day-box" style="position:relative">
+      <div class="tooltip" id="day-tip"></div>
+      <div class="strip" id="strip"></div>
+      <div class="strip-labels" id="strip-labels"></div>
+      <div class="legend">
+        <span><i style="background:var(--good)"></i><b>Green</b> cheap and clean</span>
+        <span><i style="background:var(--warn)"></i><b>Amber</b> cheap but dirty</span>
+        <span><i class="hatch"></i><b>Amber, hatched</b> part-peak price</span>
+        <span><i style="background:var(--bad)"></i><b>Red</b> peak price</span>
+      </div>
+      <div class="chart-title">Your price (¢/kWh, all-in, ≈ PG&amp;E bundled rates from Mar 1, 2026)</div>
+      <div class="chart" id="chart-price" data-label="Price per kWh by hour"></div>
+      <div class="chart-title">Grid carbon (g CO₂/kWh, CAISO)</div>
+      <div class="chart" id="chart-carbon" data-label="Grid carbon intensity by hour"></div>
+    </div>
+    <div class="insight" id="insight"></div>
+  </section>
+
+  <section class="card">
+    <h2>What will this cost?</h2>
+    <p class="sub">Pick an appliance. GridLight finds the start time that minimises your bill plus the carbon, valued at the price you choose, on your plan.</p>
+    <div class="prio"><label for="weight">Value of avoided carbon</label><input id="weight" type="range" min="0" max="300" step="25" value="100"><span class="status-pill st-green" id="weight-v" style="text-transform:none;letter-spacing:0">$100/t CO₂</span><label for="horizon">Must start within</label><select id="horizon" class="ctl"><option value="6">6 h</option><option value="12" selected>12 h</option><option value="24">24 h</option></select></div>
+    <div class="apps" id="apps"></div>
+    <div class="edit-row"><label>Energy <input id="edit-kwh" type="number" step="0.1" min="0.1"> kWh</label><label>Run time <input id="edit-h" type="number" step="1" min="1" max="12"> h</label><span class="muted">Edit to match your appliance.</span></div>
+    <div class="compare" id="compare"></div>
+    <div class="saving" id="saving"></div>
+  </section>
+
+  <section class="card">
+    <h2>Bill X-ray</h2>
+    <p class="sub">Drop the hourly usage file every PG&amp;E customer can download (<b>Green Button</b>: pge.com → Energy Usage Details → Green Button → Download my data). GridLight shows when your kWh happen, what shifting is worth, and which rate plan fits.</p>
+    <div class="xray-actions">
+      <button class="btn primary" id="use-sample">Try a sample household</button>
+      <label class="btn" for="file">Upload my Green Button CSV</label><input id="file" type="file" accept=".csv,text/csv" hidden>
+      <button class="btn" id="dl-sample">Download sample CSV</button>
+      <span class="muted">Processed in your browser. Nothing is uploaded.</span>
+    </div>
+    <div class="drop" id="drop">or drag and drop a CSV here</div>
+    <p class="muted" id="xray-err" style="color:var(--bad-ink)"></p>
+    <div id="xray-out"></div>
+  </section>
+
+  <section class="card">
+    <h2>Nudges at the right moment</h2>
+    <p class="sub">People don't open energy apps. GridLight comes to them: a text before the peak, a heads-up when cheap power is dirty, and the green windows in their calendar.</p>
+    <div class="nudge-grid">
+      <div class="phone" id="phone"></div>
+      <div>
+        <ol class="how">
+          <li><b>Plan-aware.</b> Messages follow the customer's own rate plan and the season's prices, not generic "avoid 4–9 PM" advice.</li>
+          <li><b>Carbon-aware.</b> When off-peak power is dirty (overnight, gas and imports on the margin), GridLight says so and points to the cleaner midday window at the same price.</li>
+          <li><b>One tap to act.</b> Add today's green windows to your calendar, or let a smart charger or thermostat follow them.</li>
+        </ol>
+        <button class="btn primary" id="ics">Add today's green windows to my calendar (.ics)</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card method">
+    <h2>How GridLight works, and what's real</h2>
+    <div class="realsim">
+      <div><h3>Real</h3><ul>
+        <li>Rate plans, periods and all-in prices: PG&amp;E residential pricing effective <b>March 1, 2026</b> (E-TOU-C, E-TOU-D, EV2-A, E-ELEC). SVCE GreenStart average bills are within 0.3% of PG&amp;E's on E-TOU-C (PG&amp;E rate comparison, Mar 2026); per-period SVCE prices (SVCE generation + PG&amp;E delivery + PCIA) differ slightly. Swapping in SVCE's own rate table is a data change.</li>
+        <li>Grid carbon: computed from <b>CAISO Today's Outlook</b> CO₂-by-source and demand files: winter = mean of Oct 16, 19, 22, 2026; summer = Jul 15, 2026. The app also tries CAISO's live feed.</li>
+        <li>Green Button CSV parsing, cost, CO₂, shift and plan-fit math, calendar export: all working code.</li>
+      </ul></div>
+      <div><h3>Simulated or simplified</h3><ul>
+        <li>The sample household is synthetic (labelled everywhere).</li>
+        <li>Carbon uses <b>average</b> grid intensity by hour; marginal emissions (what a shifted kWh actually changes) are typically even more favourable to midday shifting. Next step: WattTime marginal signal.</li>
+        <li>SVCE GreenStart is carbon-free on an annual accounting basis. GridLight uses hourly CAISO system emissions, because that is what the timing of a kWh changes (and what 24/7 clean-energy matching measures).</li>
+        <li>SMS delivery is a preview; energy charges exclude fixed charges, taxes and credits.</li>
+      </ul></div>
+    </div>
+    <h3>Traffic-light rule</h3>
+    <p>Red = peak period of your plan. Hatched amber = part-peak. Amber = off-peak hours whose grid carbon sits in the dirtiest 60% of the day's range. Green = off-peak and clean. Best start times minimise bill + CO₂ × the carbon value you set ($100/t by default), within the window you choose.</p>
+  </section>
+</main>
+<footer>GridLight · Stanford Cleantech Hackathon 2026 · Track 1: Energy &amp; the Grid (SVCE challenge: Making time-of-use rates make sense) · Built during hacking hours, Oct 23–24, 2026</footer>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
