@@ -7,7 +7,7 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const fmt$ = (v) => (Math.abs(v) < 100 ? "$" + v.toFixed(2) : "$" + Math.round(v).toLocaleString("en-US"));
   const money = (v) => (v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? "$" + Math.round(v / 1e3).toLocaleString("en-US") + "k" : "$" + Math.round(v));
-  const fmtC = (v) => Math.round(v * 100) + "¢";
+  const fmtC = (v) => (v < 0.1 ? (v * 100).toFixed(1) : Math.round(v * 100)) + "¢";
   const fmtKg = (g) => (g >= 10000 ? Math.round(g / 1000).toLocaleString("en-US") : (g / 1000).toFixed(g < 1000 ? 2 : 1)) + " kg";
   const hh = (h) => { h = ((h % 24) + 24) % 24; const s = h % 12 === 0 ? 12 : h % 12; return s + (h < 12 ? " AM" : " PM"); };
   const hshort = (h) => { h = ((h % 24) + 24) % 24; const s = h % 12 === 0 ? 12 : h % 12; return s + (h < 12 ? "a" : "p"); };
@@ -49,6 +49,17 @@
     const c = CARBON[season];
     const cmin = Math.min(...c), cmax = Math.max(...c), thr = cmin + 0.4 * (cmax - cmin);
     const hours = [];
+    if (RATES[plan].dynamic) {
+      // dynamic hourly prices: red = the day's priciest quarter; green = cheaper-than-median AND clean
+      const r = RATES[plan], v = r.hourly[r.day], sorted = [...v].sort((a, b) => a - b);
+      const q75 = sorted[18], med = (sorted[11] + sorted[12]) / 2;
+      for (let h = 0; h < 24; h++) {
+        const period = v[h] >= q75 ? "peak" : "off";
+        const st = period === "peak" ? "r" : c[h] > thr || v[h] > med ? "a" : "g";
+        hours.push({ h, period, price: v[h], carbon: c[h], st });
+      }
+      return hours;
+    }
     for (let h = 0; h < 24; h++) {
       const { period, price } = priceAt(plan, season, h, dow, above);
       let st = "g";
@@ -164,6 +175,10 @@
         ", but " + hh(best.hi.h) + " electricity carries <b>" + best.ratio.toFixed(1) + "×</b> the CO₂ (" + best.hi.carbon + " vs " + best.lo.carbon + " g/kWh).";
       if (peakAvgC && nightC > peakAvgC) msg += " On average, tonight's off-peak hours (9 PM–6 AM) are even dirtier than the peak itself (" + Math.round(nightC) + " vs " + Math.round(peakAvgC) + " g/kWh). A price signal alone can't tell 1 PM solar from 4 AM gas.";
     } else msg = "<b>Price and carbon agree today</b>: the cheapest hours are also the cleanest.";
+    if (RATES[state.plan].dynamic) {
+      const lo = hours.reduce((a, b) => (b.price < a.price ? b : a)), night = hours[3];
+      msg = "<b>Hourly prices already follow the grid.</b> On SVCE's dynamic pilot, " + hh(lo.h) + " is the cheapest hour (" + (lo.price * 100).toFixed(1) + "¢) and one of the cleanest (" + lo.carbon + " g/kWh), while 3 AM costs " + (night.price * 100).toFixed(1) + "¢ at " + night.carbon + " g/kWh. GridLight reads these hourly prices as easily as a fixed TOU schedule.";
+    }
     $("#insight").innerHTML = msg;
   }
 
@@ -187,7 +202,8 @@
       (narrow ? [0, 6, 12, 18] : [0, 3, 6, 9, 12, 15, 18, 21]).map((h) => '<text x="' + x(h) + '" y="' + (H - 6) + '" text-anchor="start">' + hh(h) + "</text>").join("") + "</g>" +
       (area ? '<path d="' + area + '" fill="' + o.fill + '"/>' : "") +
       '<path d="' + path + '" fill="none" stroke="' + o.color + '" stroke-width="2" stroke-linejoin="round"/>' +
-      (o.step ? vals.map((v, i) => (i === 0 || vals[i - 1] !== v ? '<text x="' + (x(i) + 3) + '" y="' + (y(v) - 5) + '" font-size="11" font-weight="600" fill="var(--text-2)">' + Math.round(v) + "¢</text>" : "")).join("") : "") +
+      (o.step && vals.filter((v, i) => i === 0 || vals[i - 1] !== v).length <= 6 ? vals.map((v, i) => (i === 0 || vals[i - 1] !== v ? '<text x="' + (x(i) + 3) + '" y="' + (y(v) - 5) + '" font-size="11" font-weight="600" fill="var(--text-2)">' + Math.round(v) + "¢</text>" : "")).join("") : "") +
+      (o.step && vals.filter((v, i) => i === 0 || vals[i - 1] !== v).length > 6 ? [vals.indexOf(Math.min(...vals)), vals.indexOf(Math.max(...vals))].map((i) => '<text x="' + (x(i) + 3) + '" y="' + (y(vals[i]) - 5) + '" font-size="11" font-weight="600" fill="var(--text-2)">' + vals[i].toFixed(1) + "¢</text>").join("") : "") +
       '<line x1="' + nowX + '" x2="' + nowX + '" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--text)" stroke-width="1.5" stroke-dasharray="3 3"/>' +
       '<text x="' + (nowX + 4) + '" y="' + (T + 10) + '" font-size="11" fill="var(--text-2)">now</text>' +
       '<line class="xh" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--text-3)" stroke-width="1" opacity="0"/>' +
@@ -372,10 +388,11 @@
   function renderXray() {
     const hh_ = state.household; const host = $("#xray-out");
     if (!hh_) { host.innerHTML = ""; return; }
-    const rows = hh_.rows, ev = evaluate(rows, state.plan, state.above), scale = 30 / ev.days;
+    const xplan = RATES[state.plan].dynamic ? "E-ELEC" : state.plan;
+    const rows = hh_.rows, ev = evaluate(rows, xplan, state.above), scale = 30 / ev.days;
     const pct = (v) => Math.round((100 * v) / ev.kwh);
-    const sh = shifted(rows, state.plan, state.above, state.shiftPct, state.carbonPrice, state.mode), ev2 = evaluate(sh.rows, state.plan, state.above);
-    const plans = Object.keys(RATES).map((p) => {
+    const sh = shifted(rows, xplan, state.above, state.shiftPct, state.carbonPrice, state.mode), ev2 = evaluate(sh.rows, xplan, state.above);
+    const plans = Object.keys(RATES).filter((p) => !RATES[p].dynamic).map((p) => {
       const a = evaluate(rows, p, state.above), b = evaluate(shifted(rows, p, state.above, state.shiftPct, state.carbonPrice, state.mode).rows, p, state.above);
       return { p, a: a.cost * scale, b: b.cost * scale, gb: b.g * scale };
     });
@@ -384,7 +401,7 @@
     const F = (state.homes * state.follow) / 100;
     const peakKw = Math.max(0, (ev.by.r - ev2.by.r) / ev.days / peakLen);
     host.innerHTML =
-      '<p class="muted" style="margin:14px 0 0">' + hh_.name + " · " + ev.days + " days · figures scaled to 30 days · energy charges on " + state.plan + "</p>" +
+      '<p class="muted" style="margin:14px 0 0">' + hh_.name + " · " + ev.days + " days · figures scaled to 30 days · energy charges on " + xplan + (xplan !== state.plan ? " (pilot hourly prices are a signal, not a full bill)" : "") + "</p>" +
       '<div class="tiles">' +
       '<div class="tile"><b>' + Math.round(ev.kwh * scale) + ' kWh</b><span>per month</span></div>' +
       '<div class="tile"><b>' + fmt$(ev.cost * scale) + '</b><span>energy cost / month</span></div>' +
@@ -397,7 +414,7 @@
       '<div class="shift-row"><span>Where can that load run?</span><select id="mode" class="ctl"><option value="any"' + (state.mode === "any" ? " selected" : "") + '>Any hour (car home midday, or workplace charging)</option><option value="night"' + (state.mode === "night" ? " selected" : "") + '>Overnight only, 9 PM–7 AM (car away by day)</option></select></div>' +
       (function () {
         const dg = ((ev.g - ev2.g) * scale), dc = ((ev.cost - ev2.cost) * scale), pctG = Math.round((100 * (ev.g - ev2.g)) / ev.g);
-        const other = state.mode === "any" ? "night" : "any", eo = evaluate(shifted(rows, state.plan, state.above, state.shiftPct, state.carbonPrice, other).rows, state.plan, state.above);
+        const other = state.mode === "any" ? "night" : "any", eo = evaluate(shifted(rows, xplan, state.above, state.shiftPct, state.carbonPrice, other).rows, xplan, state.above);
         const og = (ev.g - eo.g) * scale, oc = (ev.cost - eo.cost) * scale;
         const co2txt = (v, base) => (v >= 0 ? "<b>" + fmtKg(v) + " CO₂/month</b> avoided (" + Math.round((100 * v) / (base * scale)) + "%)" : "<b>" + fmtKg(-v) + " CO₂/month more</b> (+" + Math.round((-100 * v) / (base * scale)) + "%)");
         return '<div class="result' + (dg < 0 ? " worse" : "") + '">Same life, better timing: <b>' + fmt$(dc) + "/month</b> saved and " + co2txt(dg, ev.g) + ", by moving " + Math.round(sh.moved * scale) + " kWh/month.</div>" +
@@ -407,7 +424,7 @@
       "<table><thead><tr><th>Plan</th><th>As used today</th><th>With GridLight shifting</th><th>CO₂ with shifting</th></tr></thead><tbody>" +
       plans.map((r) => '<tr class="' + (r.p === bestPlan.p ? "win" : "") + '"><td>' + r.p + (r.p === "E-ELEC" ? "*" : "") + "</td><td>" + fmt$(r.a) + "</td><td>" + fmt$(r.b) + "</td><td>" + fmtKg(r.gb) + "</td></tr>").join("") +
       "</tbody></table>" +
-      (function () { const cur = plans.find((r) => r.p === state.plan); if (!cur || bestPlan.p === state.plan) return ""; const noShift = plans.find((r) => r.p === bestPlan.p).a; return '<p style="margin:8px 0 0;font-size:14px"><b>Plan tip:</b> ' + bestPlan.p + " is cheapest <i>if</i> this home shifts (" + fmt$(bestPlan.b) + " vs " + fmt$(cur.a) + " today)." + (noShift - cur.a > 1 ? " Switching without changing habits would cost " + fmt$(noShift - cur.a) + "/month <i>more</i>: plan advice and timing advice belong together." : Math.abs(noShift - cur.a) <= 1 ? " Switching without changing habits saves nothing: plan advice and timing advice belong together." : "") + "</p>"; })() +
+      (function () { const cur = plans.find((r) => r.p === xplan); if (!cur || bestPlan.p === xplan) return ""; const noShift = plans.find((r) => r.p === bestPlan.p).a; return '<p style="margin:8px 0 0;font-size:14px"><b>Plan tip:</b> ' + bestPlan.p + " is cheapest <i>if</i> this home shifts (" + fmt$(bestPlan.b) + " vs " + fmt$(cur.a) + " today)." + (noShift - cur.a > 1 ? " Switching without changing habits would cost " + fmt$(noShift - cur.a) + "/month <i>more</i>: plan advice and timing advice belong together." : Math.abs(noShift - cur.a) <= 1 ? " Switching without changing habits saves nothing: plan advice and timing advice belong together." : "") + "</p>"; })() +
       '<div class="chart-title" style="margin-top:22px">For SVCE: what a GridLight program would deliver</div>' +
       '<div class="impact-in"><label for="homes">Enrolled EV homes like this one</label><input id="homes" type="number" min="100" step="500" value="' + state.homes + '"><label for="follow">who follow the advice</label><input id="follow" type="number" min="0" max="100" step="5" value="' + state.follow + '" style="width:64px">%<span class="muted">per-home results above × followers, annualised (×12)</span></div>' +
       '<div class="impact">' +
@@ -476,11 +493,28 @@
     }
   }
 
+  // live day-ahead prices from the SVCE dynamic pricing pilot API (best effort; embedded days otherwise)
+  async function tryLivePrices() {
+    const R = RATES.HFP; if (!R) return;
+    const d = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    if (R.hourly[d]) { R.day = d; return; }
+    try {
+      const ctl = new AbortController(); setTimeout(() => ctl.abort(), 5000);
+      const url = "https://pge-pe-api.gridx.com/stage/v1/getPricing?utility=PGE&market=DAM&program=CalFUSE&ratename=EELEC&representativeCircuitId=013921103&cca=SVCE&startdate=" + d.replace(/-/g, "") + "&enddate=" + d.replace(/-/g, "");
+      const j = await fetch(url, { signal: ctl.signal }).then((r) => r.json());
+      const det = j.data[0].priceDetails; const v = new Array(24).fill(null);
+      det.forEach((x) => { const h = +String(x.startIntervalTimeStamp).slice(11, 13); v[h] = +x.intervalPrice; });
+      if (v.every((x) => x != null)) { R.hourly[d] = v; R.day = d; R.live = true; if (state.plan === "HFP") renderAll(); }
+    } catch (e) { /* keep embedded prices */ }
+  }
+
   // ---------- wiring ----------
   function renderAll() {
     const hours = day();
-    $("#plan-note").textContent = RATES[state.plan].note + " · " + (state.season === "winter" ? "winter (Oct–May)" : "summer (Jun–Sep)") + " prices";
+    const R = RATES[state.plan];
+    $("#plan-note").textContent = R.dynamic ? R.note + " · prices for " + new Date(R.day + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }) + (R.live ? " (live from the pilot API)" : "") + " · red = the day's priciest quarter" : R.note + " · " + (state.season === "winter" ? "winter (Oct–May)" : "summer (Jun–Sep)") + " prices";
     $("#baseline-ctl").style.display = RATES[state.plan].baseline ? "" : "none";
+    $("#price-title").textContent = R.dynamic ? "Your price (¢/kWh, SVCE dynamic pilot, hourly, day-ahead)" : "Your price (¢/kWh, all-in, ≈ PG&E bundled rates from Mar 1, 2026)";
     renderHero(hours); renderDay(hours); renderPlanner(); renderXray(); renderNudges(hours);
   }
   function init() {
@@ -510,7 +544,7 @@
     ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
     drop.addEventListener("drop", (e) => e.dataTransfer.files[0] && load(e.dataTransfer.files[0]));
     $("#ics").addEventListener("click", downloadICS);
-    renderApps(); renderAll(); bindHover(); tryLive();
+    renderApps(); renderAll(); bindHover(); tryLive(); tryLivePrices();
     window.GridLight = { state, day, bestWindows, evaluate, shifted, parseUsageCSV, sampleHousehold, renderAll };
   }
   document.addEventListener("DOMContentLoaded", init);

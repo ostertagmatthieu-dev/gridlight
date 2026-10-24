@@ -53,6 +53,27 @@ window.GL_RATES = {
   },
 };
 
+// DYNAMIC: SVCE hourly dynamic price signal from the CalFUSE / Hourly Flex Pricing pilot API (GridX for PG&E),
+// price curve SVCE-CalFUSE-EELEC-SECONDARY, representative circuit 013921103, CAISO day-ahead market, $/kWh.
+// https://pge-pe-api.gridx.com/stage/v1/getPricing?utility=PGE&market=DAM&program=CalFUSE&ratename=EELEC&representativeCircuitId=013921103&cca=SVCE&startdate=YYYYMMDD&enddate=YYYYMMDD
+// These are the published hourly pilot prices (generation + distribution components), not a full bill.
+window.GL_RATES["HFP"] = {
+  label: "SVCE hourly dynamic price (pilot)",
+  note: "Hourly prices published a day ahead (CalFUSE pilot, E-ELEC, SVCE)",
+  baseline: false,
+  dynamic: true,
+  day: "2026-10-24",
+  hourly: {
+    "2026-10-21": [0.076269, 0.069863, 0.066367, 0.065065, 0.06482, 0.07009, 0.082742, 0.086458, 0.075699, 0.070292, 0.070859, 0.06941, 0.063914, 0.064663, 0.066642, 0.072123, 0.087023, 0.139945, 0.152416, 0.141417, 0.12656, 0.113368, 0.096632, 0.074035],
+    "2026-10-22": [0.073941, 0.068966, 0.060124, 0.059914, 0.061207, 0.067488, 0.075416, 0.080915, 0.068758, 0.062118, 0.060726, 0.055237, 0.05577, 0.053519, 0.051996, 0.060119, 0.070377, 0.089178, 0.107754, 0.106492, 0.088511, 0.080639, 0.073813, 0.066073],
+    "2026-10-23": [0.066743, 0.058606, 0.056496, 0.055578, 0.057316, 0.060929, 0.068776, 0.069298, 0.060894, 0.054865, 0.049638, 0.047552, 0.042928, 0.042069, 0.041708, 0.044777, 0.052095, 0.075529, 0.09266, 0.101745, 0.085297, 0.080512, 0.067473, 0.060404],
+    "2026-10-24": [0.065249, 0.062168, 0.060796, 0.059722, 0.060022, 0.059294, 0.063374, 0.061414, 0.047594, 0.041525, 0.040487, 0.034266, 0.029683, 0.029154, 0.029345, 0.040357, 0.051176, 0.07556, 0.110578, 0.113383, 0.088541, 0.091984, 0.074922, 0.064829],
+    "2026-10-25": [0.066938, 0.063202, 0.060549, 0.058672, 0.057711, 0.058073, 0.062632, 0.058126, 0.04879, 0.040841, 0.034859, 0.030818, 0.029232, 0.029807, 0.030978, 0.038277, 0.051125, 0.076739, 0.111166, 0.114244, 0.094152, 0.095648, 0.072687, 0.066041],
+  },
+  periods: () => "off",
+  prices: {},
+};
+
 // GRID CARBON: average CO2 intensity of electricity served on the CAISO grid, gCO2/kWh, by hour
 // (hour 0 = 12–1 AM). Computed from CAISO "Today's Outlook" history files:
 //   intensity[h] = sum of CO2 by source (t/h, incl. imports, net of exports) / CAISO demand (MW) × 1000
